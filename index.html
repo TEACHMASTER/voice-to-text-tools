@@ -1,0 +1,905 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>音视频转文字</title>
+  <link rel="icon" type="image/png" href="./favicon.png">
+  <style>
+    :root {
+      --bg-0: #040a18;
+      --bg-1: #0a1a33;
+      --bg-2: #08233a;
+      --card: rgba(13, 22, 41, 0.62);
+      --stroke: rgba(158, 198, 255, 0.2);
+      --text: #e9f2ff;
+      --muted: #9ab3d9;
+      --brand-a: #2ee6c9;
+      --brand-b: #3e8cff;
+      --warn: #ff8a5c;
+      --ok: #30d390;
+      --radius: 16px;
+      --shadow: 0 14px 38px rgba(0, 6, 18, 0.38);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: "Segoe UI Variable", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+      background:
+        radial-gradient(1000px 520px at 10% -10%, rgba(60, 140, 255, 0.26), transparent 60%),
+        radial-gradient(900px 540px at 90% -12%, rgba(46, 230, 201, 0.24), transparent 62%),
+        linear-gradient(145deg, var(--bg-0), var(--bg-1) 44%, var(--bg-2));
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image: linear-gradient(rgba(120, 160, 220, 0.06) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(120, 160, 220, 0.06) 1px, transparent 1px);
+      background-size: 42px 42px;
+      pointer-events: none;
+      mask-image: radial-gradient(circle at center, black 38%, transparent 95%);
+      z-index: -1;
+    }
+
+    .wrap {
+      width: min(1080px, calc(100vw - 30px));
+      margin: 0 auto;
+      padding: 20px 0 36px;
+      animation: rise-in 0.55s ease;
+    }
+
+    @keyframes rise-in {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .nav {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 18px;
+      background: rgba(8, 16, 30, 0.7);
+      border: 1px solid var(--stroke);
+      backdrop-filter: blur(12px);
+      border-radius: 999px;
+      padding: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .nav a {
+      text-decoration: none;
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 10px 16px;
+      transition: all 0.2s ease;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+
+    .nav a.active {
+      color: #061021;
+      background: linear-gradient(120deg, var(--brand-a), #67f2df);
+    }
+
+    .nav a:not(.active):hover { color: var(--text); background: rgba(130, 170, 230, 0.14); }
+
+    .title {
+      margin: 10px 0 18px;
+      font-size: clamp(24px, 3.4vw, 38px);
+      line-height: 1.18;
+      font-weight: 760;
+      letter-spacing: 0.5px;
+      background: linear-gradient(110deg, #dcf4ff, #92d1ff 42%, #5deed6);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 1fr;
+    }
+
+    .card {
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: var(--card);
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+      letter-spacing: 0.4px;
+      color: #d4e6ff;
+    }
+
+    .cfg-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .btn {
+      border: 0;
+      border-radius: 12px;
+      color: #061021;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 10px 14px;
+      background: linear-gradient(115deg, var(--brand-a), var(--brand-b));
+      transition: transform 0.16s ease, filter 0.16s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); filter: brightness(1.07); }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+    .btn-ghost {
+      color: var(--text);
+      background: rgba(129, 169, 231, 0.16);
+      border: 1px solid rgba(145, 184, 241, 0.24);
+      font-weight: 600;
+    }
+
+    .fmt-select {
+      min-width: 128px;
+      color: var(--text);
+      background: rgba(14, 26, 47, 0.88);
+      border: 1px solid rgba(145, 184, 241, 0.24);
+      outline: none;
+    }
+
+    .fmt-select option {
+      color: #0d1b33;
+      background: #eef5ff;
+    }
+
+    .cfg {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      transition: max-height 0.25s ease, opacity 0.25s ease;
+      overflow: hidden;
+      max-height: 220px;
+      opacity: 1;
+    }
+
+    .cfg.collapsed {
+      max-height: 0;
+      opacity: 0;
+    }
+
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid rgba(145, 184, 241, 0.25);
+      background: rgba(6, 13, 24, 0.7);
+      color: var(--text);
+      padding: 10px 11px;
+      outline: none;
+    }
+
+    input[type="text"]:focus { border-color: rgba(94, 224, 205, 0.8); }
+
+    .dropzone {
+      border: 1px dashed rgba(140, 186, 248, 0.38);
+      border-radius: var(--radius);
+      padding: 30px 16px;
+      text-align: center;
+      background: rgba(8, 15, 29, 0.55);
+      cursor: pointer;
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .dropzone.dragover {
+      border-color: var(--brand-a);
+      transform: scale(1.01);
+    }
+
+    .dropzone p { margin: 7px 0; color: var(--muted); }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .progress {
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(91, 120, 171, 0.22);
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+
+    .progress > span {
+      display: block;
+      width: 0;
+      height: 100%;
+      background: linear-gradient(90deg, #4ccff7, #33f2cc);
+      transition: width 0.12s ease;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 160px;
+      resize: none;
+      font-family: "Microsoft YaHei", "Microsoft YaHei UI", "PingFang SC", "Segoe UI", sans-serif;
+      font-size: 16px;
+      font-weight: 500;
+      border-radius: 12px;
+      border: 1px solid rgba(145, 184, 241, 0.25);
+      background: rgba(8, 15, 29, 0.72);
+      color: var(--text);
+      padding: 10px;
+      line-height: 1.7;
+      outline: none;
+      overflow: hidden;
+      overflow-anchor: none;
+    }
+
+    .ops {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+
+    @media (max-width: 860px) { .cfg { grid-template-columns: 1fr; } }
+  </style>
+  <script>
+</head>
+<body>
+  <main class="wrap">
+    <h1 class="title">音视频转文字（自动分段识别）</h1>
+
+    <section class="grid">
+      <article class="card">
+        <div class="cfg-head">
+          <h2>讯飞 API 配置（本地保存）</h2>
+          <button id="toggleCfg" class="btn btn-ghost" type="button">折叠</button>
+        </div>
+        <div id="cfgPanel" class="cfg">
+          <div>
+            <label for="appid">APPID</label>
+            <input id="appid" type="text" placeholder="请输入 APPID">
+          </div>
+          <div>
+            <label for="apikey">API Key</label>
+            <input id="apikey" type="text" placeholder="请输入 API Key">
+          </div>
+          <div>
+            <label for="apisecret">API Secret</label>
+            <input id="apisecret" type="text" placeholder="请输入 API Secret">
+          </div>
+        </div>
+        <p class="hint">配置仅保存在当前浏览器 localStorage，不会上传到任何服务器。可前往 <a href="https://console.xfyun.cn/services/iat" target="_blank" rel="noopener noreferrer" style="color:#8fd8ff;">讯飞语音听写服务控制台</a> 获取讯飞API并查看免费额度（每天500免费额度）</p>
+      </article>
+
+      <article class="card">
+        <h2>音频上传</h2>
+        <div id="dropzone" class="dropzone" role="button" tabindex="0">
+          <p>拖拽音频/视频到此处，或点击选择文件</p>
+          <p class="hint">支持格式：音频 MP3/WAV/M4A/AAC/FLAC/OGG；视频 MP4/MOV/M4V/WEBM/MKV/AVI</p>
+          <p id="fileMeta" class="hint">尚未选择音频文件</p>
+          <p id="usageMeta" class="hint">预计用量：-</p>
+        </div>
+        <input id="audioInput" type="file" accept="audio/*,video/*" hidden>
+        <div class="ops">
+          <button id="startBtn" class="btn" type="button" disabled>开始识别</button>
+          <button id="clearBtn" class="btn btn-ghost" type="button">清空结果</button>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>识别进度</h2>
+        <div class="status-row">
+          <span id="statusText">等待上传音频</span>
+          <span id="progressText">0%</span>
+        </div>
+        <div class="progress"><span id="bar"></span></div>
+      </article>
+
+      <article class="card">
+        <h2>识别结果</h2>
+        <textarea id="finalText" placeholder="完整识别文本" readonly></textarea>
+        <div class="ops">
+          <button id="copyBtn" class="btn" type="button" disabled>一键复制</button>
+          <select id="downloadFormat" class="btn btn-ghost fmt-select" disabled>
+            <option value="txt">TXT 文本</option>
+            <option value="doc">Word 文档</option>
+          </select>
+          <button id="downloadBtn" class="btn btn-ghost" type="button" disabled>导出文件</button>
+          <button id="retryBtn" class="btn btn-ghost" type="button" disabled>重新识别</button>
+        </div>
+        <p id="actionTip" class="hint"></p>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      var STORAGE = {
+        appid: "xf_appid",
+        apikey: "xf_apikey",
+        apisecret: "xf_apisecret",
+        cfgCollapsed: "xf_cfg_collapsed"
+      };
+
+      var appidEl = document.getElementById("appid");
+      var apikeyEl = document.getElementById("apikey");
+      var apisecretEl = document.getElementById("apisecret");
+      var toggleCfgBtn = document.getElementById("toggleCfg");
+      var cfgPanel = document.getElementById("cfgPanel");
+
+      var dropzone = document.getElementById("dropzone");
+      var audioInput = document.getElementById("audioInput");
+      var fileMeta = document.getElementById("fileMeta");
+      var usageMeta = document.getElementById("usageMeta");
+      var startBtn = document.getElementById("startBtn");
+      var clearBtn = document.getElementById("clearBtn");
+      var copyBtn = document.getElementById("copyBtn");
+      var downloadFormat = document.getElementById("downloadFormat");
+      var downloadBtn = document.getElementById("downloadBtn");
+      var retryBtn = document.getElementById("retryBtn");
+      var statusText = document.getElementById("statusText");
+      var progressText = document.getElementById("progressText");
+      var bar = document.getElementById("bar");
+      var finalText = document.getElementById("finalText");
+      var actionTip = document.getElementById("actionTip");
+
+      var currentFile = null;
+      var pcmBytes = null;
+      var isRunning = false;
+      var latestResult = "";
+      var estimateToken = 0;
+      var SEGMENT_SECONDS = 59;
+      var BILLING_SECONDS = 60;
+      var lastGrowTs = 0;
+
+      function setTip(text, type) {
+        actionTip.textContent = text || "";
+        actionTip.className = "hint" + (type ? " " + type : "");
+      }
+
+      function setProgress(value) {
+        var v = Math.max(0, Math.min(100, Math.round(value || 0)));
+        progressText.textContent = v + "%";
+        bar.style.width = v + "%";
+      }
+
+      function setStatus(text) {
+        statusText.textContent = text;
+      }
+
+      function setRunning(running) {
+        isRunning = running;
+        startBtn.disabled = running || !currentFile;
+        retryBtn.disabled = running || !currentFile;
+      }
+
+      function escapeHtml(text) {
+        return String(text || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function autoGrow(el, allowShrink) {
+        if (!el) return;
+        if (allowShrink) el.style.height = "160px";
+        var next = Math.max(160, el.scrollHeight);
+        var current = parseFloat(el.style.height) || 160;
+        if (allowShrink || next > current) el.style.height = next + "px";
+      }
+
+      function saveCfg() {
+        localStorage.setItem(STORAGE.appid, appidEl.value.trim());
+        localStorage.setItem(STORAGE.apikey, apikeyEl.value.trim());
+        localStorage.setItem(STORAGE.apisecret, apisecretEl.value.trim());
+      }
+
+      function loadCfg() {
+        appidEl.value = localStorage.getItem(STORAGE.appid) || "";
+        apikeyEl.value = localStorage.getItem(STORAGE.apikey) || "";
+        apisecretEl.value = localStorage.getItem(STORAGE.apisecret) || "";
+        var collapsed = localStorage.getItem(STORAGE.cfgCollapsed) === "1";
+        cfgPanel.classList.toggle("collapsed", collapsed);
+        toggleCfgBtn.textContent = collapsed ? "展开" : "折叠";
+      }
+
+      function fmtBytes(num) {
+        if (num < 1024) return num + " B";
+        if (num < 1024 * 1024) return (num / 1024).toFixed(1) + " KB";
+        return (num / 1024 / 1024).toFixed(2) + " MB";
+      }
+
+      function fmtDuration(seconds) {
+        var sec = Math.max(0, Math.floor(seconds || 0));
+        var h = Math.floor(sec / 3600).toString().padStart(2, "0");
+        var m = Math.floor((sec % 3600) / 60).toString().padStart(2, "0");
+        var s = (sec % 60).toString().padStart(2, "0");
+        return h + ":" + m + ":" + s;
+      }
+
+      function probeMediaDuration(file) {
+        return new Promise(function (resolve, reject) {
+          var url = URL.createObjectURL(file);
+          var isVideo = /^video\//.test(file.type) || /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(file.name);
+          var media = document.createElement(isVideo ? "video" : "audio");
+          media.preload = "metadata";
+          media.onloadedmetadata = function () {
+            var d = media.duration;
+            URL.revokeObjectURL(url);
+            if (!isFinite(d) || d <= 0) {
+              reject(new Error("无法读取媒体时长"));
+              return;
+            }
+            resolve(d);
+          };
+          media.onerror = function () {
+            URL.revokeObjectURL(url);
+            reject(new Error("读取媒体元数据失败"));
+          };
+          media.src = url;
+        });
+      }
+
+      async function updateUsageEstimate(file) {
+        var token = ++estimateToken;
+        usageMeta.textContent = "预计用量：计算中...";
+        try {
+          var duration = await probeMediaDuration(file);
+          if (token !== estimateToken) return;
+          var estimateCalls = Math.ceil(duration / BILLING_SECONDS);
+          var partCount = Math.ceil(duration / SEGMENT_SECONDS);
+          usageMeta.textContent = "预计用量：约 " + estimateCalls + " 次（时长 " + fmtDuration(duration) + "，分段 " + partCount + " 段，每段<= " + SEGMENT_SECONDS + " 秒）";
+        } catch (e) {
+          if (token !== estimateToken) return;
+          usageMeta.textContent = "预计用量：读取时长失败，将在识别时自动分段";
+        }
+      }
+
+      function pickFile(file) {
+        if (!file) return;
+        if (!/^audio\//.test(file.type) && !/^video\//.test(file.type) && !/\.(mp3|wav|m4a|aac|flac|ogg|mp4|mov|m4v|webm|mkv|avi)$/i.test(file.name)) {
+          setTip("仅支持常见音频/视频文件", "warn");
+          return;
+        }
+        currentFile = file;
+        var kind = /^video\//.test(file.type) || /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(file.name) ? "视频" : "音频";
+        fileMeta.textContent = "已选择：" + file.name + "（" + fmtBytes(file.size) + "）";
+        updateUsageEstimate(file);
+        startBtn.disabled = false;
+        retryBtn.disabled = false;
+        setStatus(kind + "已就绪，等待识别");
+        setTip("");
+      }
+
+      async function audioToPcm16k(file) {
+        var raw = await file.arrayBuffer();
+        var AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) throw new Error("当前浏览器不支持 AudioContext");
+        var decodeCtx = new AudioCtx();
+        var audioBuffer;
+        try {
+          audioBuffer = await decodeCtx.decodeAudioData(raw.slice(0));
+        } catch (e) {
+          throw new Error("媒体解码失败，请尝试转为 MP3/WAV/MP4(H264+Aac) 后重试");
+        }
+
+        var mono = new Float32Array(audioBuffer.length);
+        for (var ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+          var data = audioBuffer.getChannelData(ch);
+          for (var i = 0; i < data.length; i++) mono[i] += data[i] / audioBuffer.numberOfChannels;
+        }
+
+        var targetRate = 16000;
+        var targetLength = Math.ceil(mono.length * targetRate / audioBuffer.sampleRate);
+        var offline = new OfflineAudioContext(1, targetLength, targetRate);
+        var temp = offline.createBuffer(1, mono.length, audioBuffer.sampleRate);
+        temp.copyToChannel(mono, 0, 0);
+        var src = offline.createBufferSource();
+        src.buffer = temp;
+        src.connect(offline.destination);
+        src.start(0);
+        var rendered = await offline.startRendering();
+        var out = rendered.getChannelData(0);
+
+        var pcm = new Int16Array(out.length);
+        for (var j = 0; j < out.length; j++) {
+          var s = Math.max(-1, Math.min(1, out[j]));
+          pcm[j] = s < 0 ? s * 32768 : s * 32767;
+        }
+
+        decodeCtx.close();
+        return new Uint8Array(pcm.buffer);
+      }
+
+      function toBase64(bytes) {
+        var chunk = 0x8000;
+        var binary = "";
+        for (var i = 0; i < bytes.length; i += chunk) {
+          var sub = bytes.subarray(i, i + chunk);
+          binary += String.fromCharCode.apply(null, sub);
+        }
+        return btoa(binary);
+      }
+
+      function mergeResult(resultMap) {
+        return Array.from(resultMap.entries())
+          .sort(function (a, b) { return a[0] - b[0]; })
+          .map(function (item) { return item[1]; })
+          .join("");
+      }
+
+      async function hmacSha256Base64(secret, text) {
+        var enc = new TextEncoder();
+        var key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+        var signed = await crypto.subtle.sign("HMAC", key, enc.encode(text));
+        return btoa(String.fromCharCode.apply(null, new Uint8Array(signed)));
+      }
+
+      async function createWsUrl(apiKey, apiSecret) {
+        var host = "iat-api.xfyun.cn";
+        var path = "/v2/iat";
+        var date = new Date().toUTCString();
+        var signOrigin = "host: " + host + "\n" + "date: " + date + "\n" + "GET " + path + " HTTP/1.1";
+        var signature = await hmacSha256Base64(apiSecret, signOrigin);
+        var authOrigin = 'api_key="' + apiKey + '", algorithm="hmac-sha256", headers="host date request-line", signature="' + signature + '"';
+        var auth = btoa(authOrigin);
+        return "wss://" + host + path + "?authorization=" + encodeURIComponent(auth) + "&date=" + encodeURIComponent(date) + "&host=" + host;
+      }
+
+      function splitPcmBySeconds(bytes, secondsPerPart) {
+        var bytesPerSecond = 16000 * 2;
+        var partBytes = Math.max(2, Math.floor(secondsPerPart * bytesPerSecond / 2) * 2);
+        var list = [];
+        for (var i = 0; i < bytes.length; i += partBytes) {
+          list.push(bytes.subarray(i, Math.min(i + partBytes, bytes.length)));
+        }
+        return list;
+      }
+
+      function setLiveAndFinal(text) {
+        latestResult = text || "";
+        finalText.value = latestResult;
+        if (!isRunning) {
+          autoGrow(finalText, false);
+          return;
+        }
+        var now = Date.now();
+        if (now - lastGrowTs > 240) {
+          autoGrow(finalText, false);
+          lastGrowTs = now;
+        }
+      }
+
+      function getOutputBaseName() {
+        if (!currentFile || !currentFile.name) return "transcript";
+        return currentFile.name.replace(/\.[^.]+$/, "") || "transcript";
+      }
+
+      function downloadResultByFormat(text, format) {
+        var content = String(text || "").trim();
+        if (!content) return;
+        var fmt = (format || "txt").toLowerCase();
+        var ext = "txt";
+        var mime = "text/plain;charset=utf-8";
+        var data = content;
+
+        if (fmt === "md") {
+          ext = "md";
+          mime = "text/markdown;charset=utf-8";
+          data = content;
+        } else if (fmt === "doc") {
+          ext = "doc";
+          mime = "application/msword;charset=utf-8";
+          data =
+            "<html><head><meta charset=\"utf-8\"></head><body style=\"font-family:Microsoft YaHei,Segoe UI,sans-serif;line-height:1.7;white-space:pre-wrap;\">" +
+            escapeHtml(content) +
+            "</body></html>";
+        }
+
+        var blob = new Blob([data], { type: mime });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = getOutputBaseName() + "." + ext;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      }
+
+      async function recognizeSegment(options) {
+        var appid = options.appid;
+        var apiKey = options.apiKey;
+        var apiSecret = options.apiSecret;
+        var pcmPart = options.pcmPart;
+        var onPartialText = options.onPartialText || function () {};
+        var onUploadProgress = options.onUploadProgress || function () {};
+
+        var wsUrl = await createWsUrl(apiKey, apiSecret);
+        return new Promise(function (resolve, reject) {
+          var ws = new WebSocket(wsUrl);
+          var segMap = new Map();
+          var finished = false;
+          var timer = null;
+
+          function doneOk(text) {
+            if (finished) return;
+            finished = true;
+            if (timer) clearInterval(timer);
+            resolve(text || "");
+          }
+
+          function doneFail(err) {
+            if (finished) return;
+            finished = true;
+            if (timer) clearInterval(timer);
+            reject(err instanceof Error ? err : new Error(String(err || "识别失败")));
+          }
+
+          ws.onopen = function () {
+            var frameSize = 5120;
+            var intervalMs = 10;
+            var offset = 0;
+            var first = true;
+
+            timer = setInterval(function () {
+              if (ws.readyState !== 1) {
+                clearInterval(timer);
+                return;
+              }
+
+              var end = Math.min(offset + frameSize, pcmPart.length);
+              var chunk = pcmPart.subarray(offset, end);
+              var status = 1;
+              if (first) status = 0;
+              if (end >= pcmPart.length) status = 2;
+
+              var payload = {
+                common: first ? { app_id: appid } : undefined,
+                business: first ? { language: "zh_cn", domain: "iat", accent: "mandarin", dwa: "wpgs" } : undefined,
+                data: {
+                  status: status,
+                  format: "audio/L16;rate=16000",
+                  encoding: "raw",
+                  audio: toBase64(chunk)
+                }
+              };
+
+              ws.send(JSON.stringify(payload));
+              first = false;
+              offset = end;
+              onUploadProgress(Math.min(1, offset / pcmPart.length));
+              if (status === 2) clearInterval(timer);
+            }, intervalMs);
+          };
+
+          ws.onmessage = function (ev) {
+            try {
+              var msg = JSON.parse(ev.data);
+              if (msg.code !== 0) {
+                ws.close();
+                doneFail(new Error((msg.message || "接口返回错误") + "（" + msg.code + "）"));
+                return;
+              }
+
+              if (msg.data && msg.data.result) {
+                var r = msg.data.result;
+                var sn = Number(r.sn || 0);
+                var text = (r.ws || []).map(function (item) {
+                  return (item.cw || []).map(function (cw) { return cw.w || ""; }).join("");
+                }).join("");
+
+                if (r.pgs === "rpl" && Array.isArray(r.rg) && r.rg.length === 2) {
+                  var start = Number(r.rg[0]);
+                  var end = Number(r.rg[1]);
+                  segMap.forEach(function (_, key) {
+                    if (key >= start && key <= end) segMap.delete(key);
+                  });
+                }
+
+                segMap.set(sn, text);
+                onPartialText(mergeResult(segMap));
+              }
+
+              if (msg.data && msg.data.status === 2) {
+                doneOk(mergeResult(segMap));
+                ws.close();
+              }
+            } catch (e) {
+              doneFail(new Error("解析识别结果失败：" + e.message));
+            }
+          };
+
+          ws.onerror = function () {
+            doneFail(new Error("WebSocket 连接失败，请检查 API 配置和网络"));
+          };
+
+          ws.onclose = function () {
+            if (!finished) doneFail(new Error("连接已关闭，未拿到该段完整识别结果"));
+          };
+        });
+      }
+
+      async function recognize() {
+        if (!currentFile || isRunning) return;
+        saveCfg();
+        var appid = appidEl.value.trim();
+        var apiKey = apikeyEl.value.trim();
+        var apiSecret = apisecretEl.value.trim();
+        if (!appid || !apiKey || !apiSecret) {
+          setTip("请先填写 APPID / API Key / API Secret", "warn");
+          return;
+        }
+
+        try {
+          setRunning(true);
+          setTip("");
+          setLiveAndFinal("");
+          copyBtn.disabled = true;
+          downloadBtn.disabled = true;
+          downloadFormat.disabled = true;
+          setStatus("正在转换为 16kHz 单声道 PCM...");
+          setProgress(2);
+
+          pcmBytes = await audioToPcm16k(currentFile);
+          setProgress(7);
+
+          var parts = splitPcmBySeconds(pcmBytes, SEGMENT_SECONDS);
+          var mergedParts = [];
+          setStatus("已自动分段，共 " + parts.length + " 段，开始识别...");
+
+          for (var i = 0; i < parts.length; i++) {
+            var baseText = mergedParts.join("");
+            setStatus("第 " + (i + 1) + "/" + parts.length + " 段识别中...");
+
+            var segmentText = await recognizeSegment({
+              appid: appid,
+              apiKey: apiKey,
+              apiSecret: apiSecret,
+              pcmPart: parts[i],
+              onUploadProgress: function (ratio) {
+                var p = 10 + ((i + Math.min(0.93, ratio)) / parts.length) * 85;
+                setProgress(p);
+              },
+              onPartialText: function (partial) {
+                setLiveAndFinal(baseText + partial);
+              }
+            });
+
+            mergedParts.push(segmentText);
+            setLiveAndFinal(mergedParts.join(""));
+            setProgress(10 + ((i + 1) / parts.length) * 85);
+          }
+
+          setProgress(100);
+          setStatus("识别完成（自动分段合并）");
+          autoGrow(finalText, false);
+          copyBtn.disabled = !latestResult;
+          downloadBtn.disabled = !latestResult;
+          downloadFormat.disabled = !latestResult;
+          setRunning(false);
+          setTip(latestResult ? "识别成功，已自动合并，可按需下载 TXT/Word" : "识别完成，但未返回文本", latestResult ? "ok" : "warn");
+        } catch (err) {
+          setStatus("识别失败");
+          setRunning(false);
+          setTip(err.message || "未知错误", "warn");
+        }
+      }
+
+      async function copyResult() {
+        var text = finalText.value.trim();
+        if (!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+          setTip("已复制到剪贴板", "ok");
+        } catch (e) {
+          var helper = document.createElement("textarea");
+          helper.value = text;
+          document.body.appendChild(helper);
+          helper.select();
+          document.execCommand("copy");
+          document.body.removeChild(helper);
+          setTip("已复制到剪贴板", "ok");
+        }
+      }
+
+      appidEl.addEventListener("input", saveCfg);
+      apikeyEl.addEventListener("input", saveCfg);
+      apisecretEl.addEventListener("input", saveCfg);
+
+      toggleCfgBtn.addEventListener("click", function () {
+        var collapsed = cfgPanel.classList.toggle("collapsed");
+        toggleCfgBtn.textContent = collapsed ? "展开" : "折叠";
+        localStorage.setItem(STORAGE.cfgCollapsed, collapsed ? "1" : "0");
+      });
+
+      dropzone.addEventListener("click", function () { audioInput.click(); });
+      dropzone.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          audioInput.click();
+        }
+      });
+
+      ["dragenter", "dragover"].forEach(function (name) {
+        dropzone.addEventListener(name, function (e) {
+          e.preventDefault();
+          dropzone.classList.add("dragover");
+        });
+      });
+      ["dragleave", "drop"].forEach(function (name) {
+        dropzone.addEventListener(name, function (e) {
+          e.preventDefault();
+          dropzone.classList.remove("dragover");
+        });
+      });
+      dropzone.addEventListener("drop", function (e) {
+        pickFile(e.dataTransfer.files && e.dataTransfer.files[0]);
+      });
+
+      audioInput.addEventListener("change", function () {
+        pickFile(audioInput.files && audioInput.files[0]);
+      });
+
+      startBtn.addEventListener("click", recognize);
+      retryBtn.addEventListener("click", recognize);
+      copyBtn.addEventListener("click", copyResult);
+      downloadBtn.addEventListener("click", function () {
+        if (!latestResult) return;
+        downloadResultByFormat(latestResult, downloadFormat.value);
+        setTip("文件已下载", "ok");
+      });
+
+      clearBtn.addEventListener("click", function () {
+        finalText.value = "";
+        autoGrow(finalText, true);
+        latestResult = "";
+        setProgress(0);
+        copyBtn.disabled = true;
+        downloadBtn.disabled = true;
+        downloadFormat.disabled = true;
+        setStatus(currentFile ? "音频已就绪，等待识别" : "等待上传音频");
+        setTip("");
+      });
+
+      loadCfg();
+      setProgress(0);
+      autoGrow(finalText, true);
+    })();
+  </script>
+</body>
+</html>
